@@ -19,7 +19,9 @@
             "generator": "Unix Makefiles",
             "binaryDir": "${sourceDir}/debug",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_FLAGS_DEBUG": "-g -fsanitize=address -DDEBUG",
+                "CMAKE_VERBOSE_MAKEFILE": true
             }
         }
     ],
