@@ -2,7 +2,10 @@
 High-performance, low-latency live Crypto processing software written in C++
 
 ## Uses the following libraries
-[WebSocket Library](https://github.com/uNetworking/uWebSockets)
+
+[uWebSockets - Web server, TBA](https://github.com/uNetworking/uWebSockets)
+
+[libwebsockets](https://github.com/warmcat/libwebsockets)
 
 [HTTPS Library](https://github.com/libcpr/cpr)
 
@@ -64,3 +67,17 @@ __-fsanitize=address__: Enables AddressSanitizer (for debugging memory issues)
 __-DDEBUG__: Defines the DEBUG macro for enabling assertions or other debug-only code
 
 __CMAKE_VERBOSE_MAKEFILE__: Outputs detailed information during the build process
+
+
+</br>
+</br>
+
+# Application Structure - TBA WIP
+
+1. Launch an instance of uWebSocket on one thread, which will handle connecting to the external WebSocket server
+
+2. Launch my application on a separate thread
+
+3. The uWebSocket instance receives data from the external server, and stores that data in some data structure (e.g. a Queue or simple array/vector)
+
+4. My application reads from that data structure, and processes the data 

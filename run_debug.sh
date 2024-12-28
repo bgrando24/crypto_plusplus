@@ -8,6 +8,13 @@ EXECUTABLE="./debug/CryptoPlusPlus"
 echo "Running CMake - generating build files - using 'debug'"
 cmake --preset debug
 
+# Check if previous compile command executed successfully
+# '$?' = exit status of last command, '-ne 0'= "not equal to zero"
+if [ $? -ne 0 ]; then
+    echo "cmake generating build files failed. Exiting."
+    exit 1
+fi
+
 #Compile build files
 echo "Compiling build files"
 cmake --build --preset debug
@@ -19,5 +26,5 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-echo "Build succeeded, running executable"
+echo "\n\n##### Build succeeded, running executable #####\n\n-------------------------------------------------------\n\n"
 $EXECUTABLE
