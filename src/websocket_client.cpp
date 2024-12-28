@@ -102,6 +102,7 @@ int WebSocketClient::default_callback(struct lws *wsi, enum lws_callback_reasons
  */
 int WebSocketClient::init()
 {
+    // define WS client protocol
     static struct lws_protocols protocols[] = {
         {
             "my-protocol",
@@ -111,14 +112,18 @@ int WebSocketClient::init()
         },
         {NULL, NULL, 0, 0}};
 
+    // create WS client
     struct lws_context_creation_info info;
+    // initialise struct with zeros
     memset(&info, 0, sizeof(info));
 
+    // we don't want to listen for incoming connections
     info.port = CONTEXT_PORT_NO_LISTEN;
     info.protocols = protocols;
     info.gid = -1;
     info.uid = -1;
 
+    // create WS context, this holds the state of the WS connection - pass in mem addr of into struct
     struct lws_context *context = lws_create_context(&info);
     if (!context)
     {
@@ -126,11 +131,12 @@ int WebSocketClient::init()
         return -1;
     }
 
+    // set up WS client connection info
     struct lws_client_connect_info ccinfo;
     memset(&ccinfo, 0, sizeof(ccinfo));
 
     ccinfo.context = context;
-    ccinfo.address = this->uri; // just "127.0.0.1"
+    ccinfo.address = this->uri;
     ccinfo.port = this->port;
     ccinfo.path = "/";
     ccinfo.host = ccinfo.address;
@@ -140,8 +146,10 @@ int WebSocketClient::init()
 
     std::cout << "Connecting to " << ccinfo.address << ":" << ccinfo.port << std::endl;
 
+    // establish websocket connection to server
     struct lws *wsi = lws_client_connect_via_info(&ccinfo);
 
+    // check if connection was successful
     if (wsi == NULL)
     {
         std::cerr << "Client connection failed" << std::endl;
@@ -157,6 +165,7 @@ int WebSocketClient::init()
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
+    // clean up
     lws_context_destroy(context);
     return 0;
 };

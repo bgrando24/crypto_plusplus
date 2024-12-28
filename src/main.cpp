@@ -22,6 +22,9 @@ int main(int argc, char **argv)
     // ------------------------------------ WebSockets with libwebsockets ------------------------------------
     // create WS client
     WebSocketClient client = WebSocketClient("127.0.0.1", 7681);
-    // initialise WS client
+    // // initialise WS client
     client.init();
+
+    // connect to binance WS API
+    // WebSocketClient client = WebSocketClient("ws-api.binance.com:443/ws-api/v3", 433);
 }
