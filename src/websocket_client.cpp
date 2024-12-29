@@ -8,11 +8,28 @@
 /**
  * @brief Default constructor, uses static default_callback
  * @param uri The WS server URI
+ * @param port The WS server port
  */
 WebSocketClient::WebSocketClient(char *uri, int port)
 {
     this->uri = uri;
     this->port = port;
+    this->path = "/";
+    // use default_callback
+    this->callback = WebSocketClient::default_callback;
+};
+
+/**
+ * @brief Constructor that allows for specifying a path for the host
+ * @param uri The WS server URI
+ * @param port The WS server port
+ * @param path The WS server path
+ */
+WebSocketClient::WebSocketClient(char *uri, int port, char *path)
+{
+    this->uri = uri;
+    this->port = port;
+    this->path = path;
     // use default_callback
     this->callback = WebSocketClient::default_callback;
 };
@@ -20,11 +37,15 @@ WebSocketClient::WebSocketClient(char *uri, int port)
 /**
  * @brief Constructor with custom callback
  * @param uri The WS server URI
+ * @param port The WS server port
+ * @param path The WS server path
  * @param callback The custom callback method
  */
-WebSocketClient::WebSocketClient(char *uri, int (*callback)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len))
+WebSocketClient::WebSocketClient(char *uri, int port, char *path, int (*callback)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len))
 {
     this->uri = uri;
+    this->port = port;
+    this->path = path;
     this->callback = callback;
 };
 
@@ -122,6 +143,7 @@ int WebSocketClient::init()
     info.protocols = protocols;
     info.gid = -1;
     info.uid = -1;
+    info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT; // SSL global init
 
     // create WS context, this holds the state of the WS connection - pass in mem addr of into struct
     struct lws_context *context = lws_create_context(&info);
@@ -131,6 +153,10 @@ int WebSocketClient::init()
         return -1;
     }
 
+    // set logging level
+    // lws_set_log_level(LLL_DEBUG | LLL_INFO | LLL_WARN | LLL_ERR, NULL);
+    lws_set_log_level(LLL_WARN | LLL_ERR, NULL);
+
     // set up WS client connection info
     struct lws_client_connect_info ccinfo;
     memset(&ccinfo, 0, sizeof(ccinfo));
@@ -138,13 +164,14 @@ int WebSocketClient::init()
     ccinfo.context = context;
     ccinfo.address = this->uri;
     ccinfo.port = this->port;
-    ccinfo.path = "/";
+    ccinfo.path = this->path;
     ccinfo.host = ccinfo.address;
     ccinfo.origin = ccinfo.address;
     ccinfo.protocol = protocols[0].name;
-    ccinfo.ssl_connection = 0;
+    ccinfo.ssl_connection = LCCSCF_USE_SSL | LCCSCF_SKIP_SERVER_CERT_HOSTNAME_CHECK; // Use SSL/TLS for the connection
+    ccinfo.alpn = "http/1.1";                                                        // Application Layer Protocol Negotiation
 
-    std::cout << "Connecting to " << ccinfo.address << ":" << ccinfo.port << std::endl;
+    std::cout << "Connecting to " << ccinfo.address << ":" << ccinfo.port << ccinfo.path << std::endl;
 
     // establish websocket connection to server
     struct lws *wsi = lws_client_connect_via_info(&ccinfo);
@@ -158,7 +185,7 @@ int WebSocketClient::init()
     }
 
     // Event loop
-    while (lws_service(context, 50) >= 0)
+    while (lws_service(context, 0) >= 0)
     {
         // Added a small sleep to prevent CPU spinning
         lws_callback_on_writable(wsi);

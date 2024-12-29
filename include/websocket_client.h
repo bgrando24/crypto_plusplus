@@ -19,6 +19,8 @@ private:
     struct lws_client_connect_info ccinfo;
     // WS server URI
     const char *uri;
+    // WS server path
+    const char *path;
     // WS server port
     int port;
     // callback method, uses default_callback if custom callback not provided
@@ -34,11 +36,20 @@ public:
      */
     WebSocketClient(char *uri, int port);
     /**
-     * @brief Constructor with custom callback
+     * @brief Constructor that allows for specifying a path for the host
      * @param uri The WS server URI
+     * @param port The WS server port
+     * @param path The WS server path
+     */
+    WebSocketClient(char *uri, int port, char *path);
+    /**
+     * @brief Constructor allowing all parameters to be specified
+     * @param uri The WS server URI
+     * @param port The WS server port
+     * @param path The WS server path
      * @param callback The custom callback method
      */
-    WebSocketClient(char *uri, int (*callback)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len));
+    WebSocketClient(char *uri, int port, char *path, int (*callback)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len));
 
     // default callback method
     static int default_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len);
