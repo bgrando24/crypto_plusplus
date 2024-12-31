@@ -38,9 +38,14 @@ FetchContent_Declare(libwebsockets GIT_REPOSITORY https://github.com/warmcat/lib
 # populate dependency
 FetchContent_MakeAvailable(libwebsockets)
 
+# ----- Adding JSON Parser: https://github.com/simdjson/simdjson -----
+FetchContent_Declare(simdjson GIT_REPOSITORY https://github.com/simdjson/simdjson
+                              GIT_TAG v3.11.3)
+FetchContent_MakeAvailable(simdjson)
+
 # link libwebsocket dependencies
 find_package(OPENSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 
 # Link external libraries
-target_link_libraries(CryptoPlusPlus PRIVATE cpr::cpr websockets OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB)
+target_link_libraries(CryptoPlusPlus PRIVATE cpr::cpr websockets simdjson OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB)
