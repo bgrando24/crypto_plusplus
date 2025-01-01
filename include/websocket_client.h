@@ -29,10 +29,10 @@ private:
     // callback method, uses default_callback if custom callback not provided
     int (*callback)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len);
     // callback method that also takes in a queue
-    int (*callback_queue)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len, CircularBuffer<Binance_AggTrade, 8> &buffer);
+    int (*callback_queue)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len, CircularBuffer<Binance_AggTrade, 1024> &buffer);
 
     // CircularBuffer for storing incoming data
-    CircularBuffer<Binance_AggTrade, 8> *buffer;
+    CircularBuffer<Binance_AggTrade, 1024> *buffer;
 
 public:
     // constructors
@@ -67,7 +67,7 @@ public:
      * @param callback The custom callback method
      * @param buffer A pointer to the CircularBuffer to store incoming data
      */
-    WebSocketClient(const char *uri, int port, const char *path, int (*callback)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len), CircularBuffer<Binance_AggTrade, 8> *buffer);
+    WebSocketClient(const char *uri, int port, const char *path, int (*callback)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len), CircularBuffer<Binance_AggTrade, 1024> *buffer);
 
     // default callback method
     static int default_callback(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len);
@@ -76,13 +76,13 @@ public:
     int init();
 
     // get buffer instance
-    CircularBuffer<Binance_AggTrade, 8> *get_buffer();
+    CircularBuffer<Binance_AggTrade, 1024> *get_buffer();
 };
 
 // WebSocketClientData - used to pass data to callback method in libwebsockets
 struct WebSocketClientData
 {
-    CircularBuffer<Binance_AggTrade, 8> *buffer;
+    CircularBuffer<Binance_AggTrade, 1024> *buffer;
     WebSocketClient *client;
 };
 

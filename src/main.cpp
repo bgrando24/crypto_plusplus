@@ -23,7 +23,7 @@ int binance_callback(struct lws *wsi, enum lws_callback_reasons reason, void *us
         return 0;
     }
 
-    CircularBuffer<Binance_AggTrade, 8> *buffer = client_data->buffer; // Access the buffer through the client
+    CircularBuffer<Binance_AggTrade, 1024> *buffer = client_data->buffer; // Access the buffer through the client
 
     // Handle different WebSocket events
     switch (reason)
@@ -116,7 +116,7 @@ int binance_callback(struct lws *wsi, enum lws_callback_reasons reason, void *us
 int main(int argc, char **argv)
 {
     // Create a buffer
-    CircularBuffer<Binance_AggTrade, 8> buffer;
+    CircularBuffer<Binance_AggTrade, 1024> buffer;
 
     // Connect to Binance WebSocket API
     WebSocketClient client("fstream.binance.com", 443, "stream?streams=bnbusdt@aggTrade/btcusdt@markPrice", binance_callback, &buffer);

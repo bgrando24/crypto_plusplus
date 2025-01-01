@@ -46,7 +46,7 @@ WebSocketClient::WebSocketClient(
     int port,
     const char *path,
     int (*callback)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len),
-    CircularBuffer<Binance_AggTrade, 8> *buffer)
+    CircularBuffer<Binance_AggTrade, 1024> *buffer)
 {
     this->uri = uri;
     this->port = port;
@@ -219,7 +219,7 @@ int WebSocketClient::init()
 };
 
 // Get buffer instance
-CircularBuffer<Binance_AggTrade, 8> *WebSocketClient::get_buffer()
+CircularBuffer<Binance_AggTrade, 1024> *WebSocketClient::get_buffer()
 {
     if (!this->buffer)
     {
