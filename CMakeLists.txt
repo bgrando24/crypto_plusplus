@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 add_definitions(-DLWS_LOG_LEVEL=DEBUG)
 
 # Add executable target - name of executable, and the source files to compile
-add_executable(CryptoPlusPlus src/main.cpp src/websocket_client.cpp)
+add_executable(CryptoPlusPlus src/main.cpp src/websocket_client.cpp src/binance.cpp)
 
 #link external libraries
 

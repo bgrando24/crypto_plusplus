@@ -35,19 +35,34 @@ WebSocketClient::WebSocketClient(char *uri, int port, char *path)
 };
 
 /**
- * @brief Constructor with custom callback
+ * @brief Constructor allowing all parameters to be specified
  * @param uri The WS server URI
  * @param port The WS server port
  * @param path The WS server path
  * @param callback The custom callback method
  */
-WebSocketClient::WebSocketClient(char *uri, int port, char *path, int (*callback)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len))
+WebSocketClient::WebSocketClient(
+    const char *uri,
+    int port,
+    const char *path,
+    int (*callback)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len),
+    CircularBuffer<Binance_AggTrade, 8> *buffer)
 {
     this->uri = uri;
     this->port = port;
     this->path = path;
     this->callback = callback;
-};
+    this->buffer = buffer;
+
+    if (this->buffer == nullptr)
+    {
+        std::cerr << "Error: Buffer is not initialized!" << std::endl;
+    }
+    else
+    {
+        std::cout << "Buffer initialized at address: " << this->buffer << std::endl;
+    }
+}
 
 /**
  * @brief Default callback method for handling different Websocket events
@@ -123,12 +138,17 @@ int WebSocketClient::default_callback(struct lws *wsi, enum lws_callback_reasons
  */
 int WebSocketClient::init()
 {
+    // Create client data structure
+    WebSocketClientData *client_data = new WebSocketClientData;
+    client_data->buffer = this->buffer;
+    client_data->client = this;
+
     // define WS client protocol
     static struct lws_protocols protocols[] = {
         {
             "my-protocol",
             this->callback,
-            0,
+            sizeof(WebSocketClientData), // use our data structure size,
             1024,
         },
         {NULL, NULL, 0, 0}};
@@ -170,6 +190,7 @@ int WebSocketClient::init()
     ccinfo.protocol = protocols[0].name;
     ccinfo.ssl_connection = LCCSCF_USE_SSL | LCCSCF_SKIP_SERVER_CERT_HOSTNAME_CHECK; // Use SSL/TLS for the connection
     ccinfo.alpn = "http/1.1";                                                        // Application Layer Protocol Negotiation
+    ccinfo.userdata = client_data;
 
     std::cout << "Connecting to " << ccinfo.address << ":" << ccinfo.port << ccinfo.path << std::endl;
 
@@ -187,7 +208,7 @@ int WebSocketClient::init()
     // Event loop
     while (lws_service(context, 0) >= 0)
     {
-        // Added a small sleep to prevent CPU spinning
+        // small sleep to prevent CPU spinning
         lws_callback_on_writable(wsi);
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
@@ -196,3 +217,15 @@ int WebSocketClient::init()
     lws_context_destroy(context);
     return 0;
 };
+
+// Get buffer instance
+CircularBuffer<Binance_AggTrade, 8> *WebSocketClient::get_buffer()
+{
+    if (!this->buffer)
+    {
+        std::cerr << "Error: Buffer is null" << std::endl;
+        throw std::runtime_error("Buffer is not initialized");
+    }
+    std::cout << "Returning buffer at address: " << this->buffer << std::endl;
+    return this->buffer;
+}
