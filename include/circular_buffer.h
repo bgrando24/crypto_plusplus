@@ -39,22 +39,25 @@ public:
     bool try_push(const T &value)
     {
         // get current write index, by loading the current value of the atomic
-        // The memory_order_relaxed parameter is used to indicate that the operation does not need to be synchronised with other threads
+        // Relaxed ordering - no synchronization - using this for most of the loads because we just need the current value - better performance
         size_t current_write = write_index.load(std::memory_order_relaxed);
         // calculate next write index, aplying bit mask to wrap around buffer if necessary
         size_t next_write = (current_write + 1) & Mask;
         std::cout << "Next write index: " << next_write << std::endl;
 
         // check if buffer is full - if next write index is equal to read index, buffer is full (i.e. we reached end of buffer)
+        // Acquire ordering - synchronizes with release stores - using this when checking if buffer is full to ensure we see the latest writes
         if (next_write == read_index.load(std::memory_order_acquire))
         {
             // buffer is full
+            // Note the way this check works means one slot in the buffer is always empty, but this also prevents the ambiguous state where read_index == write_index
             return false;
         }
 
         // store new value
         buffer[current_write] = value;
         // update write index
+        // Release ordering - synchronizes with acquire loads - ensure other threads see the write
         write_index.store(next_write, std::memory_order_release);
         std::cout << "Pushed value to buffer at index " << current_write << std::endl;
         return true;
