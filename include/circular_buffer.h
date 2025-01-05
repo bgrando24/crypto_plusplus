@@ -100,17 +100,21 @@ public:
      */
     bool try_read(T &value)
     {
-        // get current read index
-        size_t current_read = read_index.load(std::memory_order_relaxed);
-        // check if buffer is empty - if read index is equal to write index, buffer is empty
-        if (current_read == write_index.load(std::memory_order_relaxed))
+        size_t current_read = read_index.load(std::memory_order_acquire);
+        size_t current_write = write_index.load(std::memory_order_acquire);
+
+        if (current_read == current_write)
         {
-            // buffer is empty
             return false;
         }
 
-        // read value from buffer
-        value = buffer[current_read];
+        // more validation
+        if (current_read >= Size)
+        {
+            return false;
+        }
+
+        value = std::move(buffer[current_read]); // used move for better performance
         return true;
     }
 
@@ -118,12 +122,19 @@ public:
      * @brief Get the number of items currently in the buffer
      * @return The number of items in the buffer
      */
+    // (write index - read index) gives the number of items in the buffer
     size_t size() const
     {
-        // (write index - read index) gives the number of items in the buffer
         size_t current_write = write_index.load(std::memory_order_relaxed);
         size_t current_read = read_index.load(std::memory_order_relaxed);
-        return (current_write - current_read) & Mask;
+        if (current_write >= current_read)
+        {
+            return current_write - current_read;
+        }
+        else
+        {
+            return Size - (current_read - current_write);
+        }
     }
 
     /**

@@ -65,24 +65,50 @@ public:
             throw std::invalid_argument("[OrderBook][init] Data buffer reference is pointing to nullptr!");
         }
 
-        // check if data buffer is ready
-        // if (!this->data_buffer->get_is_ready())
-        // {
-        //     throw std::invalid_argument("[OrderBook][init] Data buffer is flagged as NOT ready!");
-        // }
-
         // wait for buffer to be ready
         do
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             std::cout << "[OrderBook][init] Waiting for data buffer" << std::endl;
-
         } while (!this->data_buffer->get_is_ready());
 
         // get the first WebSocket event - we need the 'First update ID' of this event, as we use this to sync the snapshot
         Binance_DiffDepth first_update;
-        // note we use try_read as we don't yet want to pop the event from the buffer
-        this->data_buffer->try_read(first_update);
+        bool read_success = false;
+        int retry_count = 0;
+        const int MAX_RETRIES = 10;
+
+        // retry until buffer successfully read from, or limit hit
+        while (!read_success && retry_count < MAX_RETRIES)
+        {
+            std::cout << "Attempt " << retry_count + 1 << " to read from buffer" << std::endl;
+            std::cout << "Current buffer size: " << this->data_buffer->size() << std::endl;
+
+            // try to read from the buffer
+            read_success = this->data_buffer->try_read(first_update);
+
+            if (read_success)
+            {
+                std::cout << "Successfully read from buffer:" << std::endl;
+                std::cout << "Event: " << (first_update.event.empty() ? "EMPTY" : first_update.event) << std::endl;
+                std::cout << "Event time: " << first_update.event_time << std::endl;
+                std::cout << "First update ID: " << first_update.first_update_id << std::endl;
+                std::cout << "Final update ID: " << first_update.final_update_id << std::endl;
+            }
+            else
+            {
+                std::cout << "Failed to read from buffer" << std::endl;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+
+            // iterate count
+            retry_count++;
+        }
+
+        if (!read_success)
+        {
+            throw std::runtime_error("Failed to read initial update after maximum retries");
+        }
 
         // now, get the snapshot - using CPR library for the HTTP request/response
         cpr::Response snapshot_response = cpr::Get(cpr::Url{this->snapshot_url});
@@ -94,10 +120,13 @@ public:
         }
 
         // for testing, just check if we can receive the data correctly
-        std::cout << "------------------- INIT - JSON -------------------" << std::endl;
+        std::cout << "------------------- JSON SNAPSHOT -------------------" << std::endl;
         std::cout << snapshot_response.text << std::endl;
 
-        // NEXT: If the lastUpdateId from the snapshot is strictly less than the U from step 2, go back to step 3
+        // If the lastUpdateId from the snapshot is strictly less than the U from step 2, go back to step 3
+        // check first update
+        std::cout << "First update ID: " << first_update.first_update_id << std::endl;
+
         // Need to parse JSON response properly, in order to store values in hashmaps
         return true;
     }
