@@ -46,7 +46,7 @@ WebSocketClient::WebSocketClient(
     int port,
     const char *path,
     int (*callback)(struct lws *wsi, enum lws_callback_reasons reason, void *user, void *in, size_t len),
-    CircularBuffer<Binance_AggTrade, 1024> *buffer)
+    CircularBuffer<Binance_DiffDepth, 1024> *buffer)
 {
     this->uri = uri;
     this->port = port;
@@ -205,6 +205,9 @@ int WebSocketClient::init()
         return -1;
     }
 
+    // connection successful, set ready flag
+    this->buffer->set_is_ready(true);
+
     // Event loop
     while (lws_service(context, 0) >= 0)
     {
@@ -219,7 +222,7 @@ int WebSocketClient::init()
 };
 
 // Get buffer instance
-CircularBuffer<Binance_AggTrade, 1024> *WebSocketClient::get_buffer()
+CircularBuffer<Binance_DiffDepth, 1024> *WebSocketClient::get_buffer()
 {
     if (!this->buffer)
     {

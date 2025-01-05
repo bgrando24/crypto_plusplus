@@ -4,6 +4,8 @@
 #include "../include/binance.h"
 #include "simdjson.h"
 #include "../include/circular_buffer.h"
+#include "../include/order_book.h"
+#include <thread>
 
 /**
  * @brief Custom callback method for Binance fstream websocket specifically
@@ -23,7 +25,7 @@ int binance_callback(struct lws *wsi, enum lws_callback_reasons reason, void *us
         return 0;
     }
 
-    CircularBuffer<Binance_AggTrade, 1024> *buffer = client_data->buffer; // Access the buffer through the client
+    CircularBuffer<Binance_DiffDepth, 1024> *buffer = client_data->buffer; // Access the buffer through the client
 
     // Handle different WebSocket events
     switch (reason)
@@ -52,41 +54,41 @@ int binance_callback(struct lws *wsi, enum lws_callback_reasons reason, void *us
         }
 
         // Create Binance struct from JSON payload
-        Binance_AggTrade binance_aggTrade;
-        try
-        {
-            binance_aggTrade.event = std::string(doc["data"]["e"].get_string().value());
-            binance_aggTrade.event_time = doc["data"]["E"].get_int64().value();
-            binance_aggTrade.symbol = std::string(doc["data"]["s"].get_string().value());
-            binance_aggTrade.trade_id = doc["data"]["a"].get_int64().value();
-            binance_aggTrade.price = std::stod(std::string(doc["data"]["p"].get_string().value()));
-            binance_aggTrade.quantity = std::stod(std::string(doc["data"]["q"].get_string().value()));
-            binance_aggTrade.first_trade_id = doc["data"]["f"].get_int64().value();
-            binance_aggTrade.last_trade_id = doc["data"]["l"].get_int64().value();
-            binance_aggTrade.trade_time = doc["data"]["T"].get_int64().value();
-            binance_aggTrade.is_buyer_maker = doc["data"]["m"].get_bool().value();
-        }
-        catch (const simdjson::simdjson_error &e)
-        {
-            std::cerr << "Error accessing JSON elements: " << e.what() << std::endl;
-            break;
-        }
+        Binance_DiffDepth binance_DiffDepth;
+        // try
+        // {
+        //     binance_aggTrade.event = std::string(doc["data"]["e"].get_string().value());
+        //     binance_aggTrade.event_time = doc["data"]["E"].get_int64().value();
+        //     binance_aggTrade.symbol = std::string(doc["data"]["s"].get_string().value());
+        //     binance_aggTrade.trade_id = doc["data"]["a"].get_int64().value();
+        //     binance_aggTrade.price = std::stod(std::string(doc["data"]["p"].get_string().value()));
+        //     binance_aggTrade.quantity = std::stod(std::string(doc["data"]["q"].get_string().value()));
+        //     binance_aggTrade.first_trade_id = doc["data"]["f"].get_int64().value();
+        //     binance_aggTrade.last_trade_id = doc["data"]["l"].get_int64().value();
+        //     binance_aggTrade.trade_time = doc["data"]["T"].get_int64().value();
+        //     binance_aggTrade.is_buyer_maker = doc["data"]["m"].get_bool().value();
+        // }
+        // catch (const simdjson::simdjson_error &e)
+        // {
+        //     std::cerr << "Error accessing JSON elements: " << e.what() << std::endl;
+        //     break;
+        // }
 
-        // Print Binance struct
-        std::cout << "Event: " << binance_aggTrade.event << "\n"
-                  << "Event time: " << binance_aggTrade.event_time << "\n"
-                  << "Symbol: " << binance_aggTrade.symbol << "\n"
-                  << "Trade ID: " << binance_aggTrade.trade_id << "\n"
-                  << "Price: " << binance_aggTrade.price << "\n"
-                  << "Quantity: " << binance_aggTrade.quantity << "\n"
-                  << "First trade ID: " << binance_aggTrade.first_trade_id << "\n"
-                  << "Last trade ID: " << binance_aggTrade.last_trade_id << "\n"
-                  << "Trade time: " << binance_aggTrade.trade_time << "\n"
-                  << "Is buyer maker: " << binance_aggTrade.is_buyer_maker << "\n"
-                  << std::endl;
+        // // Print Binance struct
+        // std::cout << "Event: " << binance_aggTrade.event << "\n"
+        //           << "Event time: " << binance_aggTrade.event_time << "\n"
+        //           << "Symbol: " << binance_aggTrade.symbol << "\n"
+        //           << "Trade ID: " << binance_aggTrade.trade_id << "\n"
+        //           << "Price: " << binance_aggTrade.price << "\n"
+        //           << "Quantity: " << binance_aggTrade.quantity << "\n"
+        //           << "First trade ID: " << binance_aggTrade.first_trade_id << "\n"
+        //           << "Last trade ID: " << binance_aggTrade.last_trade_id << "\n"
+        //           << "Trade time: " << binance_aggTrade.trade_time << "\n"
+        //           << "Is buyer maker: " << binance_aggTrade.is_buyer_maker << "\n"
+        //           << std::endl;
 
         // Push Binance struct to circular buffer
-        if (!buffer->try_push(binance_aggTrade))
+        if (!buffer->try_push(binance_DiffDepth))
         {
             std::cerr << "Failed to push to buffer" << std::endl;
         }
@@ -115,12 +117,25 @@ int binance_callback(struct lws *wsi, enum lws_callback_reasons reason, void *us
 
 int main(int argc, char **argv)
 {
-    // Create a buffer
-    CircularBuffer<Binance_AggTrade, 1024> buffer;
+    // Create a buffer for data ingestion
+    CircularBuffer<Binance_DiffDepth, 1024> buffer;
+
+    // create new order book
+    OrderBook order_book("https://api.binance.com/api/v3/depth?symbol=XRPUSDT&limit=1024", buffer);
+    // order_book.init();
 
     // Connect to Binance WebSocket API
     WebSocketClient client("fstream.binance.com", 443, "stream?streams=bnbusdt@aggTrade/btcusdt@markPrice", binance_callback, &buffer);
-    client.init();
+    // client.init();
+
+    // launch websocket client thread
+    std::thread client_thread(&WebSocketClient::init, &client);
+    // launch order ook thread
+    std::thread order_book_thread(&OrderBook::init, &order_book);
+
+    // wait for threads to complete
+    client_thread.join();
+    order_book_thread.join();
 
     return 0;
 }
