@@ -142,14 +142,23 @@ int main(int argc, char **argv)
     WebSocketClient client("stream.binance.com", 443, "/ws/xrpusdt@depth@100ms", binance_callback, &buffer);
     // client.init();
 
+    // used to track if the init method for the order book is complete
+    std::atomic<bool> order_book_init_done = false;
+
     // launch websocket client thread
     std::thread client_thread(&WebSocketClient::init, &client);
-    // launch order ook thread
-    std::thread order_book_thread(&OrderBook::init, &order_book);
+    // launch order book thread - for init
+    std::thread order_book_init_thread(&OrderBook::init, &order_book);
 
-    // wait for threads to complete
-    client_thread.join();
-    order_book_thread.join();
+    // busy-wait loop to check if order book init is complete
+    while (!order_book_init_done.load(std::memory_order_acquire))
+
+        // wait for threads to complete
+        client_thread.join();
+    order_book_init_thread.join();
+
+    // once order_book init function completes, call sync method top consume from data ingestion buffer
+    std::thread order_book_sync_thread(&OrderBook::keep_orderbook_sync, &order_book);
 
     return 0;
 }

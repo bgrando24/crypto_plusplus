@@ -9,6 +9,7 @@
 #include <cpr/cpr.h>
 #include <iostream>
 #include <thread>
+#include "simdjson.h"
 
 // https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams#diff-depth-stream
 
@@ -77,6 +78,7 @@ public:
         bool read_success = false;
         int retry_count = 0;
         const int MAX_RETRIES = 10;
+        const int MAX_SNAPSHOT_RETRIES = 10; // for the snapshot syncing
 
         // retry until buffer successfully read from, or limit hit
         while (!read_success && retry_count < MAX_RETRIES)
@@ -120,15 +122,204 @@ public:
         }
 
         // for testing, just check if we can receive the data correctly
-        std::cout << "------------------- JSON SNAPSHOT -------------------" << std::endl;
+        std::cout << "------------------- DEPTH SNAPSHOT -------------------" << std::endl;
         std::cout << snapshot_response.text << std::endl;
 
         // If the lastUpdateId from the snapshot is strictly less than the U from step 2, go back to step 3
         // check first update
         std::cout << "First update ID: " << first_update.first_update_id << std::endl;
+        // check the lastUpdateId from the snapshot
+        // Parse JSON payload
+        simdjson::ondemand::parser parser;
+        simdjson::ondemand::document doc = parser.iterate(snapshot_response.text);
 
-        // Need to parse JSON response properly, in order to store values in hashmaps
+        // Declare last_update_id variable
+        std::string last_update_id;
+
+        // Parse lastUpdateId
+        simdjson::ondemand::value last_update_id_value = doc["lastUpdateId"];
+        // Check if the value is a string, and if not, check for an integer
+        if (last_update_id_value.is_string())
+        {
+            last_update_id = std::string(last_update_id_value.get_string().value());
+        }
+        else if (last_update_id_value.is_integer())
+        {
+            last_update_id = std::to_string(last_update_id_value.get_int64());
+        }
+        else if (last_update_id_value.is_null())
+        {
+            throw std::runtime_error("[OrderBook][init] lastUpdateId is missing or null, cannot proceed.");
+        }
+        else
+        {
+            throw std::runtime_error("[OrderBook][init] lastUpdateId has unexpected type");
+        }
+
+        std::cout << "Last update ID from snapshot: " << last_update_id << std::endl;
+
+        // check if lastUpdateId < first_update_id, if so repeat fetching the snapshot until it is not
+        int snapshot_retry_count = 0; // track how many retries
+        std::cout << "Validating snapshot..." << std::endl;
+        while (std::stol(last_update_id) < std::stol(first_update.first_update_id))
+        {
+            // stop if max retries hit
+            if (snapshot_retry_count >= MAX_SNAPSHOT_RETRIES)
+            {
+                throw std::runtime_error("[OrderBook][init] Snapshot lastUpdateId < first update ID, maximum retries hit");
+            }
+
+            // fetch new snapshot
+            std::cout << "[WARNING] Snapshot lastUpdateId < first update ID, fetching new snapshot" << std::endl;
+            snapshot_response = cpr::Get(cpr::Url{this->snapshot_url});
+            doc = parser.iterate(snapshot_response.text);
+            last_update_id = std::string(doc["lastUpdateId"].get_string().value());
+            std::cout << "Last update ID from snapshot: " << last_update_id << std::endl;
+
+            // iterate count
+            snapshot_retry_count++;
+        }
+
+        // snapshot now validated
+
+        std::cout << "[OrderBook][init] Snapshot validated, parsing and storing bid/ask" << std::endl;
+
+        // Parse bids array
+        auto bids = doc["bids"];
+        // check if bids is an array
+        if (bids.type() == simdjson::ondemand::json_type::array)
+        {
+            // iterate over bids
+            for (auto bid : bids.get_array())
+            {
+                auto bid_array = bid.get_array();
+
+                // check if bid array has at least 2 elements, price and quantity
+                if (bid_array.count_elements() >= 2)
+                {
+                    try
+                    {
+                        double price = std::stod(std::string(bid_array.at(0).get_string().value()));
+                        double quantity = std::stod(std::string(bid_array.at(1).get_string().value()));
+
+                        this->bid_map[price] = quantity;
+                        this->bid_heap.push(price);
+                    }
+                    catch (const std::exception &e)
+                    {
+                        std::cerr << "[OrderBook][init] Error parsing bid: " << e.what() << std::endl;
+                    }
+                }
+                else
+                {
+                    std::cerr << "[OrderBook][init] Invalid bid array size" << std::endl;
+                }
+            }
+        }
+        else
+        {
+            std::cerr << "[OrderBook][init] Bids data is not an array!" << std::endl;
+        }
+
+        // Parse asks array
+        auto asks = doc["asks"];
+        // check if asks is an array
+        if (asks.type() == simdjson::ondemand::json_type::array)
+        {
+            // iterate over asks
+            for (auto ask : asks.get_array())
+            {
+                auto ask_array = ask.get_array();
+
+                // check if ask array has at least 2 elements, price and quantity
+                if (ask_array.count_elements() >= 2)
+                {
+                    try
+                    {
+                        double price = std::stod(std::string(ask_array.at(0).get_string().value()));
+                        double quantity = std::stod(std::string(ask_array.at(1).get_string().value()));
+
+                        this->ask_map[price] = quantity;
+                        this->ask_heap.push(price);
+                    }
+                    catch (const std::exception &e)
+                    {
+                        std::cerr << "[OrderBook][init] Error parsing ask: " << e.what() << std::endl;
+                    }
+                }
+                else
+                {
+                    std::cerr << "[OrderBook][init] Invalid ask array size" << std::endl;
+                }
+            }
+        }
+        else
+        {
+            std::cerr << "[OrderBook][init] Asks data is not an array!" << std::endl;
+        }
+
+        std::cout << "[OrderBook][init] Snapshot validated and stored, checking buffered events" << std::endl;
+
+        // in the buffered events (from data ingestion), we discard any event where its final update ID is less or equal to lastUpdateId
+        // this should result 'lastUpdateId' within interval [U,u] (first update ID and final update ID from the first event)
+
+        // iterate over buffer
+        Binance_DiffDepth event; // we need somewhere to store the retrieved event from the buffer
+        while (this->data_buffer->try_read(event))
+        {
+            // check if event is NOT within the interval
+            if (std::stol(event.final_update_id) <= std::stol(last_update_id))
+            {
+                // remove from buffer
+                this->data_buffer->try_pop(event);
+            }
+        }
+
+        // now, we have the snapshot and the buffer is cleaned up - order book is ready to be continually synchronised
+
         return true;
+    }
+
+    /**
+     * Synchronises the order book with the incoming WebSocket data - runs indefinitely
+     * @returns true if synchronisation successful, otherwise false
+     */
+    bool keep_orderbook_sync()
+    {
+        // we check the data buffer continually, and update the order book with any new events
+        Binance_DiffDepth event;
+        while (true)
+        {
+            // check buffer is marked as ready (otherwise do nothing)
+            if (this->data_buffer->get_is_ready())
+            {
+                // read and pop next event from buffer
+                this->data_buffer->try_pop(event);
+
+                // update order book
+                // BIDS
+                if (event.bids.size() > 0)
+                {
+                    // get price and quantity
+                    double bid_price = std::stod(event.bids[0][0]);
+                    double bid_quantity = std::stod(event.bids[0][1]);
+                    // add bid price and quantity
+                    this->bid_map[bid_price] = bid_quantity;
+                    this->bid_heap.push(bid_price);
+                }
+
+                // ASKS
+                if (event.asks.size() > 0)
+                {
+                    // get price and quantity
+                    double ask_price = std::stod(event.asks[0][0]);
+                    double ask_quantity = std::stod(event.asks[0][1]);
+                    // add ask price and quantity
+                    this->ask_map[ask_price] = ask_quantity;
+                    this->ask_heap.push(ask_price);
+                }
+            }
+        }
     }
 };
 
