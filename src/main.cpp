@@ -7,6 +7,62 @@
 #include "../include/order_book.h"
 #include <thread>
 
+// Helper function to safely parse bid/ask arrays
+bool parse_order_array(simdjson::ondemand::array array, std::vector<std::array<std::string, 2>> &orders)
+{
+    try
+    {
+        // Pre-allocate to avoid reallocation
+        orders.clear();
+        orders.reserve(1024); // reasonable default size for depth updates
+
+        // Single pass through the array
+        for (auto element : array)
+        {
+            auto values = element.get_array();
+            std::array<std::string, 2> entry;
+
+            // Get first value (price)
+            auto price_val = values.at(0);
+            if (price_val.type() == simdjson::ondemand::json_type::string)
+            {
+                entry[0] = std::string(price_val.get_string().value());
+            }
+            else if (price_val.type() == simdjson::ondemand::json_type::number)
+            {
+                entry[0] = std::to_string(price_val.get_double().value());
+            }
+            else
+            {
+                continue; // Skip invalid entries
+            }
+
+            // Get second value (quantity)
+            auto qty_val = values.at(1);
+            if (qty_val.type() == simdjson::ondemand::json_type::string)
+            {
+                entry[1] = std::string(qty_val.get_string().value());
+            }
+            else if (qty_val.type() == simdjson::ondemand::json_type::number)
+            {
+                entry[1] = std::to_string(qty_val.get_double().value());
+            }
+            else
+            {
+                continue; // Skip invalid entries
+            }
+
+            orders.push_back(entry);
+        }
+        return true;
+    }
+    catch (const simdjson::simdjson_error &e)
+    {
+        std::cerr << "Error parsing order array: " << e.what() << std::endl;
+        return false;
+    }
+}
+
 /**
  * @brief Custom callback method for Binance fstream websocket specifically
  * @param wsi The websocket instance
@@ -134,31 +190,37 @@ int main(int argc, char **argv)
     // Create a buffer for data ingestion
     CircularBuffer<Binance_DiffDepth, 1024> buffer;
 
-    // create new order book
+    // Create new order book
     OrderBook order_book("https://api.binance.com/api/v3/depth?symbol=XRPUSDT&limit=1024", buffer);
-    // order_book.init();
 
     // Connect to Binance WebSocket API
     WebSocketClient client("stream.binance.com", 443, "/ws/xrpusdt@depth@100ms", binance_callback, &buffer);
-    // client.init();
 
-    // used to track if the init method for the order book is complete
-    std::atomic<bool> order_book_init_done = false;
+    // Used to track if the init method for the order book is complete
+    std::atomic<bool> order_book_init_done(false);
 
-    // launch websocket client thread
+    // Launch websocket client thread
     std::thread client_thread(&WebSocketClient::init, &client);
-    // launch order book thread - for init
-    std::thread order_book_init_thread(&OrderBook::init, &order_book);
 
-    // busy-wait loop to check if order book init is complete
+    // Launch order book thread - for init
+    std::thread order_book_init_thread([&order_book, &order_book_init_done]()
+                                       {
+        order_book.init();
+        order_book_init_done.store(true, std::memory_order_release); });
+
+    // Wait for order book initialization to complete
     while (!order_book_init_done.load(std::memory_order_acquire))
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
 
-        // wait for threads to complete
-        client_thread.join();
-    order_book_init_thread.join();
-
-    // once order_book init function completes, call sync method top consume from data ingestion buffer
+    // Start the sync thread
     std::thread order_book_sync_thread(&OrderBook::keep_orderbook_sync, &order_book);
+
+    // Wait for all threads
+    client_thread.join();
+    order_book_init_thread.join();
+    order_book_sync_thread.join(); // Add this to keep the program running
 
     return 0;
 }
