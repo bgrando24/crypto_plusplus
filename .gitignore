@@ -4,3 +4,6 @@
 /debug
 # VSCode directory
 /.vscode
+
+# stats files
+order_book_stats.txt

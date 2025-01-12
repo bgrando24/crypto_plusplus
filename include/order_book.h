@@ -10,6 +10,7 @@
 #include <iostream>
 #include <thread>
 #include "simdjson.h"
+#include "file_IO.h"
 
 // https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams#diff-depth-stream
 
@@ -20,6 +21,9 @@
 class OrderBook
 {
 private:
+    int counter;                                               // Counter to track the cycles
+    std::chrono::high_resolution_clock::time_point start_time; // Timer to measure time elapsed
+
     // hashmaps for bid/ask prices and quantities - note Binance API returns quantity as floating point values
 
     // Bids: key = price, value = total order quantity
@@ -39,6 +43,9 @@ private:
     std::string snapshot_url;
     // pointer to the data ingestion buffer
     CircularBuffer<Binance_DiffDepth, 1024> *data_buffer;
+
+    // used to write stats to file
+    FileIO file_io;
 
     /**
      * @brief Parses a price level from a JSON array.
@@ -400,6 +407,11 @@ public:
                 std::cout << "Best bid: $" << bid_heap.top() << " Best ask: $" << ask_heap.top() << std::endl;
                 double spread = ask_heap.top() - bid_heap.top();
                 std::cout << "Spread: $" << spread << std::endl;
+
+                // write stats to file
+                std::string stats = "Timestamp: " + std::to_string(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+                stats += " Best bid: $" + std::to_string(bid_heap.top()) + " Best ask: $" + std::to_string(ask_heap.top()) + " Spread: $" + std::to_string(spread) + "\n";
+                file_io.append_to_file("order_book_stats.txt", stats);
             }
 
             // sleep for a short time before checking the buffer again
